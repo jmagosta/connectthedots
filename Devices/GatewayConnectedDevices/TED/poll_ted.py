@@ -27,6 +27,7 @@ uri_suffix = 'history.xml'
 uri_args = '?MTU=0&COUNT=2&INDEX=10'
 repetitions = 3600
 interval = 1
+PERIOD = 'second'
 
 ########################################################################
 def tags_on_lines(xml_str):
@@ -43,11 +44,10 @@ def extraction(ex, cnt, the_date, the_power, the_voltage):
  
     
 ########################################################################
-def parse_ted_history_xml(lines, period = 'second'):
+def parse_ted_history_xml(lines, period):
     ## xml is simple, just iterate thru the page, ignore nesting
     ## but don't assume that the tags are on separate lines. 
     period_pat = re.compile(r'<'+period+'>', re.IGNORECASE)
-    #period_pat = re.compile(r'<'+period+'>(.+)</'+period+'>', re.IGNORECASE)
     meas_pat = re.compile(r'<(date|power|voltage)>([^<]+)', re.IGNORECASE)
     meas_ct = 0
     date, power, voltage = None, None, None
@@ -57,8 +57,8 @@ def parse_ted_history_xml(lines, period = 'second'):
         ## find the next reading set. 
         m = re.match(period_pat, a_line)
         if m:
-            if dbg: 
-                print meas_ct, a_line
+            #if dbg: 
+            #    print meas_ct, a_line
             extracted = extraction(extracted, meas_ct, date, power, voltage)
             meas_ct +=1
 
@@ -123,12 +123,14 @@ def file_parse(args):
 
 
 ########################################################################
-def iterate_readings(period, uri, seq, reps): 
+def iterate_readings(interval, period, uri, seq): 
     last_extract = []
-    for z in range(reps):
+    #for z in range(reps):
+    while True:
         extract = extract_ted(uri, period)
         # Check for overlap in the last two records returned, 
         # to avoid duplicates.
+        time.sleep(interval - 0.1)
         if extract and extract != last_extract:
             if extract[1] != seq[-1]:
                 extracted = extract[1]
@@ -139,36 +141,38 @@ def iterate_readings(period, uri, seq, reps):
 
 
 ########################################################################
-def request_uri(period):
+def request_uri(period= 'second'):
     ## request url
     uri = 'http://' + uri_ip + uri_path  + period + uri_suffix + uri_args
     if dbg: print 'uri: ' + uri
     return uri
 
 
-
 ########################################################################
 # Write the output to a tab-delimited file, 
 # And return the output as a list of lists
-def read_ted(period, repetitions, out_file='ted500.out'):
+def read_ted(interval, period, repetitions, out_file):
     uri = request_uri(period)
     extract_seq = [None]
     with open(out_file, 'wb') as out_fd:
         print 'Begun polling.', out_file
-        for reading, extract_seq in iterate_readings(period, uri, extract_seq, repetitions):
+        count = 0
+        for reading, extract_seq in iterate_readings(interval, period, uri, extract_seq):
             extract_seq.append(reading)
-            #if period == 'second':
-            #    time.sleep(0.9)
-            #else:
-            time.sleep(period - 0.1)
             wr_list(out_fd, reading)
+            if count >= repetitions:
+                break
+            count += 1
 
     return extract_seq
 
+#######################################################################
+def out_filename(s = ''):
+    return 'ted'+s+time.strftime('%m-%d_%H-%M-%S')+'.log'
 
 #######################################################################
-def main2(period, out_file = 'ted500.out'):
-    return read_ted(period, repetitions, out_file)
+def main2(interval, out_file = 'ted500.out'):
+    return read_ted(interval, PERIOD, repetitions, out_file)
 
 ########################################################################
 if __name__ == '__main__':
@@ -185,10 +189,13 @@ if __name__ == '__main__':
 
     args = sys.argv[1:]
     if len(args) > 1:
-        repetitions = int(args[1])
+        repetitions = int(args[1]) -1
+    elif len(args) > 0:
+        interval = int(args[0])
+    
     start = time.time()
-    outfn = 'ted'+time.strftime('%m-%d_%H-%M-%S')+'.txt'
-    lofl = main2(args[0], outfn)
+    outfn = out_filename()
+    lofl = main2(interval, outfn)
     pprint.pprint(lofl)
  
     print >> sys.stderr, dbg, sys.argv, "Done in ", '%5.3f' % (time.time() - start), " secs!"

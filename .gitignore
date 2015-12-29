@@ -117,3 +117,8 @@ UpgradeLog*.XML
 #Thumbs.db
 Thumbs.db
 Azure/MachineLearning/UpgradeLog.htm
+
+#emacs backup files
+*~
+\#*
+
